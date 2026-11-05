@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Lalezar&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overflow:hidden}
@@ -56,6 +57,13 @@ input[type=text]:focus{border-color:#5a7aff;background:rgba(255,255,255,.95);box
 .seg button.sel{border-color:#5a7aff;background:linear-gradient(180deg,rgba(220,232,255,.95),rgba(200,215,255,.95));color:#1c3080;transform:scale(1.03);box-shadow:0 4px 15px rgba(90,122,255,.3)}
 #codeInput{direction:ltr;text-align:center;font-family:'Lalezar';font-size:34px;letter-spacing:13px;text-transform:uppercase;width:215px;margin:6px auto;display:block;background:rgba(240,245,255,.8)}
 .codeBig{font-family:'Lalezar';font-size:44px;letter-spacing:8px;text-align:center;direction:ltr;color:#2a3a90;background:rgba(240,245,255,.85);border:2px dashed rgba(90,122,255,.6);border-radius:18px;padding:6px 10px;margin-top:10px}
+
+.roomItem {background: rgba(240, 245, 255, 0.85);border: 2px solid rgba(90, 122, 255, 0.4);border-radius: 14px;padding: 10px 15px;display: flex;justify-content: space-between;align-items: center;color: #1a2050;font-weight: 700;box-shadow: 0 4px 10px rgba(0,0,0,0.1);}
+.roomItem .info { display: flex; flex-direction: column; gap: 4px; text-align: right; }
+.roomItem .code { font-family: 'Lalezar'; font-size: 24px; color: #2a3a90; letter-spacing: 2px; }
+.roomItem .btnJoinRoom { font-family: 'Lalezar'; font-size: 16px; padding: 8px 20px; border-radius: 10px; background: linear-gradient(180deg, #7a9aff, #5a7aff); color: #fff; border: none; cursor: pointer; box-shadow: 0 4px 0 #2a3a90; transition: .1s; text-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.roomItem .btnJoinRoom:active { transform: translateY(3px); box-shadow: 0 1px 0 #2a3a90; }
+.roomItem .btnJoinRoom:disabled { background: #aaa; box-shadow: 0 4px 0 #777; cursor: not-allowed; text-shadow: none; }
 
 #hud{position:fixed;inset:0;z-index:25;pointer-events:none}
 #hud>*{pointer-events:auto}
@@ -154,7 +162,8 @@ svg.icon{width:18px;height:18px;fill:currentColor;display:block}
   </div>
   <div class="menuCol">
     <button class="btn gold" id="btnCreate">إنشاء غرفة</button>
-    <button class="btn" id="btnJoin">الانضمام لغرفة</button>
+    <button class="btn" id="btnJoin">الانضمام بكود</button>
+    <button class="btn" id="btnRooms" style="background:linear-gradient(135deg,rgba(80,200,150,.9),rgba(30,150,100,.9));box-shadow:0 8px 0 rgba(10,80,50,.75),0 15px 30px rgba(20,100,60,.45)">الغرف المفتوحة</button>
     <button class="btn" id="btnFree">دخول العالم الحر</button>
     <button class="btn ghost" id="btnSettings">الإعدادات</button>
     <button class="btn ghost" id="btnFull">ملء الشاشة</button>
@@ -241,6 +250,16 @@ svg.icon{width:18px;height:18px;fill:currentColor;display:block}
   </div>
 </div>
 
+<div class="modal hidden" id="modalRooms">
+  <div class="card center">
+    <h2>الغرف المفتوحة</h2>
+    <div id="roomsList" style="max-height: 50vh; overflow-y: auto; width: 100%; margin: 15px 0; display: flex; flex-direction: column; gap: 10px;">
+      <p style="color:#4a5a9a; text-align:center;">جاري البحث عن غرف...</p>
+    </div>
+    <button class="btn ghost small" id="closeRooms">إغلاق</button>
+  </div>
+</div>
+
 <div class="modal hidden" id="modalSettings">
   <div class="card">
     <h2>الإعدادات</h2>
@@ -321,6 +340,125 @@ const S={
   st:JSON.parse(localStorage.getItem('cg_st')||'null')||{q:((navigator.deviceMemory||8)<=4?'med':'high'),snd:true,time:'day'},
   save(pf){this.pf=pf;localStorage.setItem('cg_pf',JSON.stringify(pf));},
   saveSt(){localStorage.setItem('cg_st',JSON.stringify(this.st));}};
+
+/* ========== نظام الغرف MQTT ========== */
+let mqttClient = null;
+const mqttTopic = 'mojtama_ghoom_rooms_v1';
+const activeRooms = new Map();
+
+function initMQTT() {
+  if (typeof mqtt === 'undefined') {
+    console.warn('MQTT library not loaded');
+    return;
+  }
+  try {
+    mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+    mqttClient.on('connect', () => {
+      console.log('MQTT connected');
+      mqttClient.subscribe(mqttTopic);
+      if (Net.mode === 'host') publishRoomState();
+    });
+    mqttClient.on('message', (topic, message) => {
+      try {
+        const data = JSON.parse(message.toString());
+        if (data.action === 'ping_all') {
+            if (Net.mode === 'host') publishRoomState();
+        } else if (data.action === 'register' || data.action === 'update' || data.action === 'ping') {
+            activeRooms.set(data.code, {
+                host: data.host,
+                players: data.players,
+                cap: data.cap,
+                lastSeen: Date.now()
+            });
+        } else if (data.action === 'unregister') {
+            activeRooms.delete(data.code);
+        }
+        updateRoomsUI();
+      } catch (e) { }
+    });
+    mqttClient.on('error', (err) => {
+      console.warn('MQTT error', err);
+    });
+  } catch (e) {
+    console.warn('MQTT connection error', e);
+  }
+}
+
+function publishRoomState() {
+  if (!mqttClient || !mqttClient.connected || Net.mode !== 'host') return;
+  mqttClient.publish(mqttTopic, JSON.stringify({
+    action: 'register',
+    code: Net.code,
+    host: S.pf.name,
+    players: Net.conns.length + 1,
+    cap: Net.cap
+  }));
+}
+
+function unregisterRoom() {
+  if (!mqttClient || !mqttClient.connected || Net.mode !== 'host') return;
+  mqttClient.publish(mqttTopic, JSON.stringify({
+    action: 'unregister',
+    code: Net.code
+  }));
+}
+
+setInterval(() => {
+  if (Net.mode === 'host') publishRoomState();
+  const now = Date.now();
+  let changed = false;
+  for (const [code, room] of activeRooms.entries()) {
+    if (now - room.lastSeen > 35000) {
+      activeRooms.delete(code);
+      changed = true;
+    }
+  }
+  if (changed) updateRoomsUI();
+}, 15000);
+
+function updateRoomsUI() {
+  const list = document.getElementById('roomsList');
+  if (!list) return;
+  list.innerHTML = '';
+  
+  // تنظيف الغرف الميتة
+  const now = Date.now();
+  for (const [code, room] of activeRooms.entries()) {
+      if (now - room.lastSeen > 35000) activeRooms.delete(code);
+  }
+
+  if (activeRooms.size === 0) {
+    list.innerHTML = '<p style="color:#4a5a9a; text-align:center;">لا توجد غرف مفتوحة حالياً</p>';
+    return;
+  }
+
+  activeRooms.forEach((room, code) => {
+    const isFull = room.players >= room.cap;
+    const isMyRoom = (Net.mode === 'host' && Net.code === code);
+
+    const item = document.createElement('div');
+    item.className = 'roomItem';
+    item.innerHTML = `
+        <div class="info">
+            <span class="code">${code}</span>
+            <span style="font-size:12px; color:#4a5a9a;">المضيف: ${room.host}</span>
+            <span style="font-size:12px; color:#4a5a9a;">اللاعبون: ${room.players} / ${room.cap}</span>
+        </div>
+        <button class="btnJoinRoom" ${isFull || isMyRoom ? 'disabled' : ''}>
+            ${isMyRoom ? 'أنت هنا' : (isFull ? 'ممتلئة' : 'انضمام')}
+        </button>
+    `;
+
+    if (!isFull && !isMyRoom) {
+        item.querySelector('.btnJoinRoom').onclick = () => {
+            document.getElementById('modalRooms').classList.add('hidden');
+            AudioSys.click();
+            joinRoom(code);
+        };
+    }
+    list.appendChild(item);
+  });
+}
 
 /* ========== أصوات ========== */
 const AudioSys={
@@ -588,10 +726,6 @@ const CHARACTERS = [
   { id: 'girl', name: 'أنثى', url: 'https://pixiv.github.io/three-vrm/packages/three-vrm/examples/models/VRM1_Constraint_Twist_Sample.vrm' },
 ];
 
-const vrmLoader=new GLTFLoader();
-vrmLoader.crossOrigin='anonymous';
-vrmLoader.register(p=>new VRMLoaderPlugin(p));
-
 /* ========== ذاكرة التخزين المحلية (IndexedDB) ========== */
 const DB_NAME = 'VRMCache';
 const STORE_NAME = 'models';
@@ -636,7 +770,11 @@ async function loadVRMFrom(url){
       await cacheVRM(url, buffer);
     }
     const basePath = url.substring(0, url.lastIndexOf('/') + 1);
-    const gltf = await vrmLoader.parseAsync(buffer, basePath);
+    // تحميل لودر مستقل لكل شخصية لمنع تداخل الذاكرة بين اللاعبين
+    const loader = new GLTFLoader();
+    loader.crossOrigin = 'anonymous';
+    loader.register(p => new VRMLoaderPlugin(p));
+    const gltf = await loader.parseAsync(buffer, basePath);
     const vrm = gltf.userData.vrm || null;
     if(vrm){
       VRMUtils.rotateVRM0(vrm);
@@ -1478,6 +1616,7 @@ function createRoom(cap){
     startPeer();});}
 function startPeer(){
   const peer=new Peer(IDP+Net.code);Net.peer=peer;
+  peer.on('open',()=>{publishRoomState();});
   peer.on('error',e=>{
     if(e.type==='unavailable-id'){
       Net.code=genCode();updateRoomChip();
@@ -1492,7 +1631,7 @@ function startPeer(){
 function hostData(conn,d){
   if(d.t==='hello'){
     if(Net.conns.length>=Net.cap-1){safeSend(conn,{t:'full'});setTimeout(()=>{try{conn.close();}catch{}},400);return;}
-    const id = 'p_' + Math.random().toString(36).substring(2, 9); // ID فريد تماماً
+    const id = 'p_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
     conn.pid=id;conn.pf=d.pf;
     Net.conns.push(conn);addAvatar(id,d.pf);AudioSys.pop();toast('انضم '+d.pf.name);
     const roster=[{id:'host',pf:S.pf},...Net.conns.map(c=>({id:c.pid,pf:c.pf}))];
@@ -1537,7 +1676,9 @@ function startNetLoop(){stopNetLoop();
     if(Net.mode==='host')Net.conns.forEach(c=>safeSend(c,st));
     else if(Net.mode==='guest')safeSend(Net.hostConn,st);},80);}
 function stopNetLoop(){if(netTimer){clearInterval(netTimer);netTimer=null;}}
-function disposeNet(){stopNetLoop();
+function disposeNet(){
+  unregisterRoom();
+  stopNetLoop();
   try{Net.hostConn&&Net.hostConn.close();}catch{}
   Net.conns.forEach(c=>{try{c.close();}catch{}});Net.conns=[];
   try{Net.peer&&Net.peer.destroy();}catch{}
@@ -1604,7 +1745,9 @@ function updateRoomChip(){const chip=$('#roomChip');
   if(!Net.mode){chip.classList.add('hidden');return;}
   chip.classList.remove('hidden');
   const n=Net.mode==='host'?Net.conns.length+1:Avatars.size+1;
-  chip.innerHTML=`<span class="dot"></span> غرفة <b dir="ltr">${Net.code}</b> &nbsp; ${n}/${Net.cap}`;}
+  chip.innerHTML=`<span class="dot"></span> غرفة <b dir="ltr">${Net.code}</b> &nbsp; ${n}/${Net.cap}`;
+  if(Net.mode==='host') publishRoomState();
+}
 
 function loop(){
   requestAnimationFrame(loop);
@@ -1810,6 +1953,8 @@ document.querySelectorAll('#modalRoom [data-cap]').forEach(b=>{
   b.onclick=()=>{$('#modalRoom').classList.add('hidden');AudioSys.click();createRoom(+b.dataset.cap);};});
 $('#closeRoom').onclick=()=>$('#modalRoom').classList.add('hidden');
 $('#btnJoin').onclick=()=>{AudioSys.click();showScreen('scr-join');setTimeout(()=>$('#codeInput').focus(),250);};
+$('#btnRooms').onclick=()=>{AudioSys.click();$('#modalRooms').classList.remove('hidden');updateRoomsUI();if(mqttClient&&mqttClient.connected)mqttClient.publish(mqttTopic,JSON.stringify({action:'ping_all'}));};
+$('#closeRooms').onclick=()=>$('#modalRooms').classList.add('hidden');
 $('#btnFree').onclick=()=>{AudioSys.click();requireProfile(()=>{disposeNet();enterWorld(false);});};
 $('#btnSettings').onclick=()=>{AudioSys.click();openSettings();};
 $('#btnFull').onclick=()=>{AudioSys.click();toggleFS();};
@@ -1872,6 +2017,8 @@ $('#clearCacheBtn').onclick=async()=>{
   } catch(e) { toast('حدث خطأ'); }
 };
 
+// بدء نظام الغرف
+initMQTT();
 updateProfChips();
 </script>
 </body>
