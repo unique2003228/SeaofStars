@@ -1,4 +1,47 @@
 <!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Test sample</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+body {
+    font-family:Verdana;
+    color: #333;
+    padding:100px;
+}
+.testClass{
+    background-color:orange;
+}
+</style>
+</head>
+
+
+
+
+
+<!--This is a default HTML sample.-->
+
+
+
+
+
+<body>
+<div class="testClass" onclick="clickMe()">
+You see a preview of the default HTML sample.
+<br>
+Click me to test the JavaScript functionality.
+</div>
+<script type="text/javascript">
+function clickMe()
+{
+var testClassDiv = document.getElementsByClassName("testClass")[0];
+var testText = testClassDiv.innerHTML;
+testClassDiv.innerHTML = testText.replace(/click me.+?functionality/i, "I was clicked, the JavaScript is working");
+}
+</script>
+</body>
+</html<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -53,7 +96,7 @@ body{font-family:'Tajawal',sans-serif;user-select:none;-webkit-user-select:none;
 input[type=text]{width:100%;font-family:inherit;font-size:16px;font-weight:700;padding:12px 15px;border-radius:14px;border:2px solid rgba(255,255,255,.85);background:rgba(240,245,255,.7);color:#1a2050;outline:none;backdrop-filter:blur(4px);transition:.2s}
 input[type=text]:focus{border-color:#5a7aff;background:rgba(255,255,255,.95);box-shadow:0 0 0 4px rgba(90,122,255,.25)}
 .seg{display:flex;gap:9px}
-.seg button{flex:1;font-family:'Lalezar';font-size:19px;padding:10px;border-radius:16px;border:2px solid rgba(255,255,255,.6);background:rgba(255,255,255,.5);color:#4a5a9a;cursor:pointer;transition:.2s;backdrop-filter:blur(4px)}
+.seg button{flex:1;font-family:'Lalezar';font-size:15px;padding:10px 5px;border-radius:16px;border:2px solid rgba(255,255,255,.6);background:rgba(255,255,255,.5);color:#4a5a9a;cursor:pointer;transition:.2s;backdrop-filter:blur(4px);white-space:nowrap}
 .seg button.sel{border-color:#5a7aff;background:linear-gradient(180deg,rgba(220,232,255,.95),rgba(200,215,255,.95));color:#1c3080;transform:scale(1.03);box-shadow:0 4px 15px rgba(90,122,255,.3)}
 #codeInput{direction:ltr;text-align:center;font-family:'Lalezar';font-size:34px;letter-spacing:13px;text-transform:uppercase;width:215px;margin:6px auto;display:block;background:rgba(240,245,255,.8)}
 .codeBig{font-family:'Lalezar';font-size:44px;letter-spacing:8px;text-align:center;direction:ltr;color:#2a3a90;background:rgba(240,245,255,.85);border:2px dashed rgba(90,122,255,.6);border-radius:18px;padding:6px 10px;margin-top:10px}
@@ -123,7 +166,7 @@ svg.icon{width:18px;height:18px;fill:currentColor;display:block}
  #pvCanvas{height:min(56dvh,235px)}
  .fLabel{margin:7px 0 3px;font-size:12px}
  input[type=text]{font-size:14px;padding:7px 11px}
- .seg button{font-size:16px;padding:6px}
+ .seg button{font-size:14px;padding:6px}
  #btnSavePf{font-size:18px}
  #codeInput{font-size:26px;letter-spacing:9px}
  #jumpBtn{width:76px;height:76px;font-size:18px;right:16px;bottom:calc(18px + env(safe-area-inset-bottom))}
@@ -183,6 +226,7 @@ svg.icon{width:18px;height:18px;fill:currentColor;display:block}
       <div class="seg" id="charSeg">
         <button id="segBoy" class="sel">ذكر</button>
         <button id="segGirl">أنثى</button>
+        <button id="segVampire">UwU Vampire</button>
       </div>
       <div style="margin-top:13px"><button class="btn gold" id="btnSavePf" style="width:100%">حفظ والدخول</button></div>
     </div>
@@ -421,7 +465,6 @@ function updateRoomsUI() {
   if (!list) return;
   list.innerHTML = '';
   
-  // تنظيف الغرف الميتة
   const now = Date.now();
   for (const [code, room] of activeRooms.entries()) {
       if (now - room.lastSeen > 35000) activeRooms.delete(code);
@@ -721,10 +764,16 @@ class FallbackRig{
       ms.forEach(m=>{if(!m)return;for(const k in m){const v=m[k];if(v&&v.isTexture&&v.dispose)v.dispose();}m.dispose();});}});}catch(e){}}
 }
 
+// ====== هنا تضيف الشخصية الثالثة (UwU Vampire) ======
 const CHARACTERS = [
   { id: 'boy', name: 'ذكر', url: 'https://raw.githubusercontent.com/unique2003228/Vrm/main/2608284133256745833.vrm' },
   { id: 'girl', name: 'أنثى', url: 'https://pixiv.github.io/three-vrm/packages/three-vrm/examples/models/VRM1_Constraint_Twist_Sample.vrm' },
+  { id: 'vampire', name: 'UwU Vampire', url: 'https://raw.githubusercontent.com/unique2003228/Vrm/main/3149110078643997739.vrm' } // <--- ضع رابط الشخصية هنا
 ];
+
+const vrmLoader=new GLTFLoader();
+vrmLoader.crossOrigin='anonymous';
+vrmLoader.register(p=>new VRMLoaderPlugin(p));
 
 /* ========== ذاكرة التخزين المحلية (IndexedDB) ========== */
 const DB_NAME = 'VRMCache';
@@ -770,7 +819,6 @@ async function loadVRMFrom(url){
       await cacheVRM(url, buffer);
     }
     const basePath = url.substring(0, url.lastIndexOf('/') + 1);
-    // تحميل لودر مستقل لكل شخصية لمنع تداخل الذاكرة بين اللاعبين
     const loader = new GLTFLoader();
     loader.crossOrigin = 'anonymous';
     loader.register(p => new VRMLoaderPlugin(p));
@@ -927,7 +975,6 @@ class VRMRig{
 
 async function tryLoadVRM(charId){
   const ch = CHARACTERS.find(c => c.id === charId) || CHARACTERS[0];
-  // تحميل نسخة جديدة كلياً لكل لاعب لمنع تداخل الشخصيات
   return await loadVRMFrom(ch.url);
 }
 
@@ -1922,7 +1969,7 @@ function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classL
 function showOverlay(html){const o=$('#overlay');o.innerHTML=html;o.classList.remove('hidden');}
 function hideOverlay(){const o=$('#overlay');o.classList.add('hidden');o.innerHTML='';}
 function updateProfChips(){
-  const nm=S.pf?S.pf.name:'أنشئ ملفك',av=S.pf?(S.pf.charId==='girl'||S.pf.gender==='girl'?'♀':'♂'):'★';
+  const nm=S.pf?S.pf.name:'أنشئ ملفك',av=S.pf?(S.pf.charId==='vampire'?'🧛‍♀️':(S.pf.charId==='girl'||S.pf.gender==='girl'?'♀':'♂')):'★';
   $('#chipName').textContent=nm;$('#chipAva').textContent=av;}
 function openLobby(){
   showOverlay(`<div class="card center" style="margin:0">
@@ -1971,17 +2018,24 @@ function openProfile(){draft=Object.assign({name:'',charId:'boy',gender:'boy'},S
   showScreen('scr-profile');renderProfileUI();}
 function renderProfileUI(){
   $('#nameInput').value=draft.name||'';
-  const isGirl = (draft.charId==='girl' || draft.gender==='girl');
+  
+  const isBoy = draft.charId === 'boy' || draft.gender === 'boy';
+  const isGirl = draft.charId === 'girl' || (draft.gender === 'girl' && draft.charId !== 'vampire');
+  const isVamp = draft.charId === 'vampire';
+
+  $('#segBoy').classList.toggle('sel', isBoy);
   $('#segGirl').classList.toggle('sel', isGirl);
-  $('#segBoy').classList.toggle('sel', !isGirl);
+  $('#segVampire').classList.toggle('sel', isVamp);
+  
   refreshPreview();}
 
 $('#btnBackPf').onclick=()=>{showScreen('scr-title');pendingCb=null;};
 $('#segBoy').onclick=()=>{draft.charId='boy';draft.gender='boy';AudioSys.click();renderProfileUI();};
 $('#segGirl').onclick=()=>{draft.charId='girl';draft.gender='girl';AudioSys.click();renderProfileUI();};
+$('#segVampire').onclick=()=>{draft.charId='vampire';draft.gender='girl';AudioSys.click();renderProfileUI();};
 $('#btnSavePf').onclick=()=>{
   const nm=$('#nameInput').value.trim()||('زائر'+Math.floor(rand(10,99)));
-  draft.name=nm;draft.charId=draft.charId||'boy';draft.gender=draft.charId==='girl'?'girl':'boy';S.save(draft);updateProfChips();AudioSys.pop();toast('تم حفظ ملفك');
+  draft.name=nm;draft.charId=draft.charId||'boy';draft.gender=draft.charId==='girl'||draft.charId==='vampire'?'girl':'boy';S.save(draft);updateProfChips();AudioSys.pop();toast('تم حفظ ملفك');
   if(pendingCb){const c=pendingCb;pendingCb=null;showScreen(null);c();}else showScreen('scr-title');};
 
 $('#chatToggle').onclick=()=>{AudioSys.click();const b=$('#chatBar');b.classList.toggle('hidden');
@@ -2017,7 +2071,6 @@ $('#clearCacheBtn').onclick=async()=>{
   } catch(e) { toast('حدث خطأ'); }
 };
 
-// بدء نظام الغرف
 initMQTT();
 updateProfChips();
 </script>
